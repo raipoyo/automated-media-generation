@@ -42,10 +42,14 @@ jobs:
         pip install anthropic
         
     - name: Set up environment variables
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       run: |
-        echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> $GITHUB_ENV
-        echo "FAL_KEY=${{ secrets.FAL_KEY }}" >> $GITHUB_ENV
-        echo "GOOGLE_APPLICATION_CREDENTIALS_JSON=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" >> $GITHUB_ENV
+        echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> $GITHUB_ENV
+        echo "FAL_KEY=$FAL_KEY" >> $GITHUB_ENV
+        echo "GOOGLE_APPLICATION_CREDENTIALS_JSON=$GOOGLE_APPLICATION_CREDENTIALS_JSON" >> $GITHUB_ENV
         
     - name: Set up Google Cloud credentials
       run: |
@@ -53,6 +57,10 @@ jobs:
         echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcloud-service-key.json" >> $GITHUB_ENV
         
     - name: Generate media content
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-service-key.json
       run: |
         python generate_media.py \
           --image-prompt "${{ github.event.inputs.prompt || 'A cute fluffy cat sitting peacefully, soft lighting, adorable expression, high quality, photorealistic' }}" \
