@@ -247,8 +247,15 @@ def main():
     OUTPUT_DIR = Path(args.output_dir)
     
     # Check required environment variables
-    required_env_vars = ['ANTHROPIC_API_KEY', 'FAL_KEY', 'GOOGLE_APPLICATION_CREDENTIALS']
+    required_env_vars = ['ANTHROPIC_API_KEY', 'FAL_KEY']
+    # For Google credentials, check either file path or JSON content
+    google_creds_file = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    google_creds_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+    
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    
+    if not google_creds_file and not google_creds_json:
+        missing_vars.append('GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_APPLICATION_CREDENTIALS_JSON')
     
     if missing_vars:
         print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")

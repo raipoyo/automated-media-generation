@@ -56,6 +56,15 @@ jobs:
         echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > /tmp/gcloud-service-key.json
         echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcloud-service-key.json" >> $GITHUB_ENV
         
+    - name: Test secrets configuration
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcloud-service-key.json
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      run: |
+        python test_secrets.py
+        
     - name: Generate media content
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
