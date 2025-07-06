@@ -1,0 +1,104 @@
+name: Generate Media with Claude Code SDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Custom prompt for cat image generation'
+        required: false
+        default: 'A cute fluffy cat sitting peacefully, soft lighting, adorable expression, high quality, photorealistic'
+      text_overlay:
+        description: 'Text to overlay on the image'
+        required: false
+        default: 'The cat is so cute!'
+      music_prompt:
+        description: 'Music generation prompt'
+        required: false
+        default: 'Gentle healing music for a cute cat video, soft piano melody, calming ambient sounds, peaceful and soothing atmosphere'
+  schedule:
+    # Run every day at 9 AM UTC
+    - cron: '0 9 * * *'
+
+jobs:
+  generate-media:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install Claude Code SDK
+      run: |
+        pip install anthropic
+        
+    - name: Set up environment variables
+      run: |
+        echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> $GITHUB_ENV
+        echo "FAL_KEY=${{ secrets.FAL_KEY }}" >> $GITHUB_ENV
+        echo "GOOGLE_APPLICATION_CREDENTIALS_JSON=${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" >> $GITHUB_ENV
+        
+    - name: Set up Google Cloud credentials
+      run: |
+        echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > /tmp/gcloud-service-key.json
+        echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcloud-service-key.json" >> $GITHUB_ENV
+        
+    - name: Generate media content
+      run: |
+        python generate_media.py \
+          --image-prompt "${{ github.event.inputs.prompt || 'A cute fluffy cat sitting peacefully, soft lighting, adorable expression, high quality, photorealistic' }}" \
+          --text-overlay "${{ github.event.inputs.text_overlay || 'The cat is so cute!' }}" \
+          --music-prompt "${{ github.event.inputs.music_prompt || 'Gentle healing music for a cute cat video, soft piano melody, calming ambient sounds, peaceful and soothing atmosphere' }}"
+          
+    - name: Upload generated media
+      uses: actions/upload-artifact@v4
+      with:
+        name: generated-media-${{ github.run_number }}
+        path: |
+          output/
+          *.png
+          *.mp4
+          *.wav
+        retention-days: 30
+        
+    - name: Commit and push generated content
+      if: github.event_name == 'schedule'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add output/
+        git commit -m "🎬 Daily media generation $(date '+%Y-%m-%d %H:%M:%S')" || exit 0
+        git push
+        
+    - name: Create release with media
+      if: github.event_name == 'schedule'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: daily-${{ github.run_number }}
+        name: Daily Media Generation ${{ github.run_number }}
+        body: |
+          🎬 Automated media generation for $(date '+%Y-%m-%d')
+          
+          Generated content:
+          - Cat image with text overlay
+          - Video from image
+          - Healing background music
+          - Final combined video
+          
+          🤖 Generated with Claude Code SDK
+        files: |
+          output/*
+          final_*.mp4
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
