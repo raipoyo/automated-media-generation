@@ -1,0 +1,239 @@
+name: Automated Protein Media Generation
+
+on:
+  schedule:
+    # Run every day at 9:00 AM JST (0:00 UTC)
+    - cron: '0 0 * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      custom_prompt:
+        description: 'Custom prompt for protein image generation'
+        required: false
+        default: 'High quality protein powder and supplements, professional product photography'
+        type: string
+      
+      text_overlay:
+        description: 'Text to overlay on image'
+        required: false
+        default: 'Protein is good'
+        type: string
+
+jobs:
+  generate-protein-media:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg curl
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests mcp-sdk anthropic
+    
+    - name: Install Claude Code CLI
+      run: |
+        curl -fsSL https://claude.ai/install.sh | sh
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+    
+    - name: Configure Claude Code
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      run: |
+        # Configure Claude Code with API keys
+        claude configure --api-key "$ANTHROPIC_API_KEY"
+        
+        # Create MCP configuration for tools
+        mkdir -p ~/.claude
+        cat > ~/.claude/claude_desktop_config.json << EOF
+        {
+          "mcpServers": {
+            "imagen4-ultra": {
+              "command": "mcp-server-imagen4-ultra",
+              "args": ["--fal-key", "$FAL_KEY"]
+            },
+            "kontext": {
+              "command": "mcp-server-kontext", 
+              "args": ["--fal-key", "$FAL_KEY"]
+            },
+            "hailuo": {
+              "command": "mcp-server-hailuo",
+              "args": ["--fal-key", "$FAL_KEY"]
+            },
+            "lyria": {
+              "command": "mcp-server-lyria",
+              "args": ["--google-key", "$GOOGLE_API_KEY"]
+            }
+          }
+        }
+        EOF
+    
+    - name: Generate timestamp
+      id: timestamp
+      run: echo "timestamp=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+    
+    - name: Generate protein image with Imagen4 Ultra
+      id: generate-image
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        CUSTOM_PROMPT: ${{ github.event.inputs.custom_prompt || 'High quality protein powder and supplements, professional product photography, clean white background, various protein containers including powder jars, protein bars, and shaker bottles, vibrant and appetizing presentation, studio lighting, commercial food photography style' }}
+      run: |
+        # Generate image using Claude Code with MCP tools
+        claude --non-interactive << 'EOF'
+        Generate a protein product image using the following prompt: "$CUSTOM_PROMPT"
+        Use the imagen4_ultra MCP tool with aspect ratio 1:1 and save the result.
+        EOF
+        
+        # Find the generated image file
+        IMAGE_FILE=$(find . -name "imagen4_ultra_*.png" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+        echo "image_file=$IMAGE_FILE" >> $GITHUB_OUTPUT
+    
+    - name: Add text to image with Kontext
+      id: add-text
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        TEXT_OVERLAY: ${{ github.event.inputs.text_overlay || 'Protein is good' }}
+        IMAGE_FILE: ${{ steps.generate-image.outputs.image_file }}
+      run: |
+        # Add text to image using Claude Code with MCP tools
+        claude --non-interactive << 'EOF'
+        Add the text "$TEXT_OVERLAY" to the image at $IMAGE_FILE using the kontext MCP tool.
+        Use bold, professional typography that complements the product photography style.
+        EOF
+        
+        # Find the generated text image file
+        TEXT_IMAGE_FILE=$(find . -name "kontext_*.jpg" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+        echo "text_image_file=$TEXT_IMAGE_FILE" >> $GITHUB_OUTPUT
+    
+    - name: Convert image to video with Hailuo
+      id: create-video
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        FAL_KEY: ${{ secrets.FAL_KEY }}
+        TEXT_IMAGE_FILE: ${{ steps.add-text.outputs.text_image_file }}
+      run: |
+        # Convert image to video using Claude Code with MCP tools
+        claude --non-interactive << 'EOF'
+        Convert the image at $TEXT_IMAGE_FILE to a video using the hailuo_02 MCP tool.
+        Use the prompt: "Transform this protein product image into a dynamic video with smooth camera movement, gentle product rotation, and professional lighting effects"
+        EOF
+        
+        # Find the generated video file
+        VIDEO_FILE=$(find . -name "hailuo_02_*.mp4" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+        echo "video_file=$VIDEO_FILE" >> $GITHUB_OUTPUT
+    
+    - name: Generate background music with Lyria
+      id: generate-music
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      run: |
+        # Generate music using Claude Code with MCP tools
+        claude --non-interactive << 'EOF'
+        Generate background music using the lyria MCP tool with the following parameters:
+        - Prompt: "Cheerful instrumental melody with light percussion"
+        - Style: "folk"
+        - Tempo: "medium"
+        - Duration: 10 seconds
+        EOF
+        
+        # Find the generated music file
+        MUSIC_FILE=$(find . -name "lyria_output_*.wav" -type f -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
+        echo "music_file=$MUSIC_FILE" >> $GITHUB_OUTPUT
+    
+    - name: Combine video and music
+      id: combine-media
+      env:
+        VIDEO_FILE: ${{ steps.create-video.outputs.video_file }}
+        MUSIC_FILE: ${{ steps.generate-music.outputs.music_file }}
+        TIMESTAMP: ${{ steps.timestamp.outputs.timestamp }}
+      run: |
+        # Combine video and audio using ffmpeg
+        FINAL_VIDEO="final_protein_video_with_music_$TIMESTAMP.mp4"
+        
+        ffmpeg -i "$VIDEO_FILE" -i "$MUSIC_FILE" -c:v copy -c:a aac -shortest "$FINAL_VIDEO"
+        
+        echo "final_video=$FINAL_VIDEO" >> $GITHUB_OUTPUT
+        
+        # Get file size for reporting
+        FILE_SIZE=$(stat -c%s "$FINAL_VIDEO")
+        echo "file_size=$FILE_SIZE" >> $GITHUB_OUTPUT
+    
+    - name: Upload generated media as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: protein-media-${{ steps.timestamp.outputs.timestamp }}
+        path: |
+          ${{ steps.generate-image.outputs.image_file }}
+          ${{ steps.add-text.outputs.text_image_file }}
+          ${{ steps.create-video.outputs.video_file }}
+          ${{ steps.generate-music.outputs.music_file }}
+          ${{ steps.combine-media.outputs.final_video }}
+        retention-days: 30
+    
+    - name: Create release with generated media
+      if: github.event_name == 'schedule'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: protein-media-${{ steps.timestamp.outputs.timestamp }}
+        release_name: Daily Protein Media Generation - ${{ steps.timestamp.outputs.timestamp }}
+        body: |
+          🎬 **Automated Protein Media Generation**
+          
+          Generated on: ${{ steps.timestamp.outputs.timestamp }}
+          
+          **Files generated:**
+          - Original protein image: ${{ steps.generate-image.outputs.image_file }}
+          - Text-enhanced image: ${{ steps.add-text.outputs.text_image_file }}
+          - Video: ${{ steps.create-video.outputs.video_file }}
+          - Background music: ${{ steps.generate-music.outputs.music_file }}
+          - Final video with music: ${{ steps.combine-media.outputs.final_video }}
+          
+          **Final video size:** ${{ steps.combine-media.outputs.file_size }} bytes
+          
+          This release was automatically generated by GitHub Actions.
+        draft: false
+        prerelease: false
+    
+    - name: Cleanup old artifacts
+      run: |
+        # Remove files older than 7 days to save space
+        find . -name "imagen4_ultra_*.png" -mtime +7 -delete || true
+        find . -name "kontext_*.jpg" -mtime +7 -delete || true
+        find . -name "hailuo_02_*.mp4" -mtime +7 -delete || true
+        find . -name "lyria_output_*.wav" -mtime +7 -delete || true
+        find . -name "final_protein_video_with_music_*.mp4" -mtime +7 -delete || true
+    
+    - name: Summary
+      run: |
+        echo "## 🎉 Workflow Completed Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Generated Files:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Original Image**: ${{ steps.generate-image.outputs.image_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Text-Enhanced Image**: ${{ steps.add-text.outputs.text_image_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Video**: ${{ steps.create-video.outputs.video_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Background Music**: ${{ steps.generate-music.outputs.music_file }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Final Video**: ${{ steps.combine-media.outputs.final_video }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### File Size:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Final Video Size**: ${{ steps.combine-media.outputs.file_size }} bytes" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "All files have been uploaded as artifacts and are available for download." >> $GITHUB_STEP_SUMMARY
